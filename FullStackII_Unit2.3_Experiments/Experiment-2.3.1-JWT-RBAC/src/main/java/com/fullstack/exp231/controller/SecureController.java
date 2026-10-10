@@ -1,0 +1,3 @@
+package com.fullstack.exp231.controller;
+import org.springframework.security.access.prepost.PreAuthorize; import org.springframework.web.bind.annotation.*;
+@RestController @RequestMapping("/api") public class SecureController { @GetMapping("/public") public String pub(){return "Public endpoint - no token required";} @GetMapping("/profile") public String profile(){return "Authenticated endpoint - USER or ADMIN can access";} @GetMapping("/admin") @PreAuthorize("hasRole('ADMIN')") public String admin(){return "ADMIN access granted";} @DeleteMapping("/admin/data") @PreAuthorize("hasRole('ADMIN')") public String delete(){return "ADMIN protected operation completed";} }

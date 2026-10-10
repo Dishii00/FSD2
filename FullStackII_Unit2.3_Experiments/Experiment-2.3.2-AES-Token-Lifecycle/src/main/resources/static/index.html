@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AES Encryption + Token Lifecycle</title>
+  <style>
+    :root { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; color: #172033; background: #f3f6fb; }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    main { width: min(960px, calc(100% - 32px)); margin: 42px auto; }
+    header { margin-bottom: 22px; }
+    h1 { margin: 0 0 8px; font-size: clamp(1.7rem, 4vw, 2.3rem); }
+    header p, .hint { color: #5b6475; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+    section { padding: 20px; background: #fff; border: 1px solid #e1e7f0; border-radius: 14px; box-shadow: 0 5px 20px #1720330a; }
+    h2 { margin: 0 0 14px; font-size: 1.12rem; }
+    label { display: block; margin: 12px 0 6px; font-size: .9rem; font-weight: 650; }
+    input { width: 100%; padding: 10px 12px; border: 1px solid #cbd4e1; border-radius: 8px; font: inherit; }
+    input:focus { outline: 3px solid #bfdbfe; border-color: #2563eb; }
+    .buttons { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 14px; }
+    button { padding: 10px 14px; border: 0; border-radius: 8px; color: white; background: #1d4ed8; font: inherit; font-weight: 650; cursor: pointer; }
+    button:hover { background: #1e40af; }
+    button.secondary { color: #253047; background: #e9eef6; }
+    button.secondary:hover { background: #dce4f0; }
+    button:disabled { opacity: .55; cursor: wait; }
+    .status { min-height: 24px; margin: 12px 0 0; color: #475569; font-size: .92rem; }
+    .token { overflow-wrap: anywhere; color: #475569; font: .76rem/1.5 ui-monospace, Consolas, monospace; }
+    pre { min-height: 54px; max-height: 210px; overflow: auto; margin: 12px 0 0; padding: 12px; border-radius: 8px; background: #111827; color: #e5e7eb; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .hint { margin: 10px 0 0; font-size: .86rem; }
+    @media (max-width: 560px) { main { margin: 26px auto; } }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>AES Encryption + Token Lifecycle</h1>
+      <p>Try access and refresh tokens, refresh-token rotation, and AES-encrypted credential storage.</p>
+    </header>
+    <div class="grid">
+      <section aria-labelledby="login-title">
+        <h2 id="login-title">1. Sign in</h2>
+        <form id="login-form">
+          <label for="username">Username</label>
+          <input id="username" name="username" autocomplete="username" value="user" required>
+          <label for="password">Password</label>
+          <input id="password" name="password" type="password" autocomplete="current-password" value="user123" required>
+          <div class="buttons"><button type="submit">Log in</button></div>
+        </form>
+        <p class="hint">Demo: user / user123</p>
+        <p id="login-status" class="status" role="status" aria-live="polite">Not signed in.</p>
+        <div class="buttons"><button id="refresh-button" class="secondary" type="button" disabled>Refresh token pair</button></div>
+        <p class="hint">The server rotates the refresh token after a successful refresh.</p>
+        <h2>Access token</h2>
+        <pre id="access-token">Sign in to get an access token.</pre>
+        <h2>Refresh token</h2>
+        <pre id="refresh-token">Sign in to get a refresh token.</pre>
+      </section>
+      <section aria-labelledby="credential-title">
+        <h2 id="credential-title">2. Encrypted credential storage</h2>
+        <label for="provider">Provider</label>
+        <input id="provider" value="Google" required>
+        <label for="credential">Credential to encrypt</label>
+        <input id="credential" type="password" placeholder="Enter a demo secret" required>
+        <div class="buttons">
+          <button id="store-button" type="button">Encrypt &amp; store</button>
+          <button id="read-button" class="secondary" type="button">Read &amp; decrypt</button>
+        </div>
+        <p id="credential-status" class="status" role="status" aria-live="polite">Credential has not been stored.</p>
+        <pre id="credential-response">Results will appear here.</pre>
+        <p class="hint">Demo only: do not enter real credentials or secrets.</p>
+      </section>
+    </div>
+    <p><a href="/h2-console">Open the H2 database console</a></p>
+  </main>
+  <script>
+    const loginForm = document.querySelector("#login-form");
+    const loginStatus = document.querySelector("#login-status");
+    const accessOutput = document.querySelector("#access-token");
+    const refreshOutput = document.querySelector("#refresh-token");
+    const refreshButton = document.querySelector("#refresh-button");
+    const credentialStatus = document.querySelector("#credential-status");
+    const credentialResponse = document.querySelector("#credential-response");
+    let refreshToken = "";
+
+    function showError(element, error) {
+      element.textContent = error instanceof Error ? error.message : String(error);
+    }
+
+    async function responseBody(response) {
+      const text = await response.text();
+      if (!response.ok) throw new Error(`HTTP ${response.status}: ${text || response.statusText}`);
+      if (!text) return {};
+      try { return JSON.parse(text); } catch { return text; }
+    }
+
+    function showTokens(tokens) {
+      refreshToken = tokens.refreshToken;
+      accessOutput.textContent = tokens.accessToken;
+      refreshOutput.textContent = tokens.refreshToken;
+      refreshButton.disabled = false;
+    }
+
+    loginForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      loginStatus.textContent = "Signing in…";
+      try {
+        const response = await fetch("/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            username: loginForm.elements.username.value,
+            password: loginForm.elements.password.value
+          })
+        });
+        const tokens = await responseBody(response);
+        showTokens(tokens);
+        loginStatus.textContent = "Signed in. Access and refresh tokens issued.";
+      } catch (error) {
+        refreshToken = "";
+        refreshButton.disabled = true;
+        loginStatus.textContent = "Sign-in failed.";
+        showError(accessOutput, error);
+      }
+    });
+
+    refreshButton.addEventListener("click", async () => {
+      if (!refreshToken) return;
+      refreshButton.disabled = true;
+      loginStatus.textContent = "Refreshing token pair…";
+      try {
+        const response = await fetch("/auth/refresh", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ refreshToken })
+        });
+        showTokens(await responseBody(response));
+        loginStatus.textContent = "Tokens refreshed. The previous refresh token has been rotated.";
+      } catch (error) {
+        refreshToken = "";
+        refreshOutput.textContent = "Refresh failed; sign in again.";
+        loginStatus.textContent = "Token refresh failed.";
+        showError(accessOutput, error);
+      } finally {
+        refreshButton.disabled = !refreshToken;
+      }
+    });
+
+    document.querySelector("#store-button").addEventListener("click", async () => {
+      const provider = document.querySelector("#provider").value.trim();
+      const credential = document.querySelector("#credential").value;
+      if (!provider || !credential) {
+        credentialStatus.textContent = "Enter both a provider and a demo credential.";
+        return;
+      }
+      credentialStatus.textContent = "Encrypting and storing…";
+      try {
+        const query = new URLSearchParams({ provider, credential });
+        const response = await fetch(`/secure/store-credential?${query}`, { method: "POST" });
+        const result = await responseBody(response);
+        credentialStatus.textContent = result.message;
+        credentialResponse.textContent = JSON.stringify(result, null, 2);
+      } catch (error) {
+        credentialStatus.textContent = "Credential storage failed.";
+        showError(credentialResponse, error);
+      }
+    });
+
+    document.querySelector("#read-button").addEventListener("click", async () => {
+      const provider = document.querySelector("#provider").value.trim();
+      if (!provider) {
+        credentialStatus.textContent = "Enter a provider to look up.";
+        return;
+      }
+      credentialStatus.textContent = "Reading and decrypting…";
+      try {
+        const query = new URLSearchParams({ provider });
+        const response = await fetch(`/secure/read-credential?${query}`);
+        const result = await responseBody(response);
+        credentialStatus.textContent = "Credential read and decrypted.";
+        credentialResponse.textContent = JSON.stringify(result, null, 2);
+      } catch (error) {
+        credentialStatus.textContent = "Credential read failed.";
+        showError(credentialResponse, error);
+      }
+    });
+  </script>
+</body>
+</html>
