@@ -1,0 +1,15 @@
+CAMPUSHUB - QUICK START
+
+1) Install Node.js 18+ and MySQL 8+.
+2) In MySQL, run database/schema.sql.
+3) In server/, copy .env.example to .env and enter your MySQL password and a long JWT_SECRET.
+4) Run: npm install
+5) Run: npm run dev
+6) In a second terminal, open client/ and run: npm install, then npm run dev.
+7) Open the Vite URL shown in the terminal and register a student account.
+8) To create a faculty account, register normally, then run in MySQL:
+   UPDATE users SET role='faculty' WHERE email='your-faculty-email';
+   For admin: UPDATE users SET role='admin' WHERE email='your-admin-email';
+9) Sign out and sign back in after changing a role so the new JWT contains the updated role.
+
+Important: .env is intentionally not included. Never commit database passwords or JWT secrets.

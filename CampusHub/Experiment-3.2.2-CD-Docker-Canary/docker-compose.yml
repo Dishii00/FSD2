@@ -1,0 +1,14 @@
+services:
+ stable:
+  build: .
+  environment: [APP_RELEASE=stable-v1]
+  expose: ["8080"]
+ canary:
+  build: .
+  environment: [APP_RELEASE=canary-v2]
+  expose: ["8080"]
+ gateway:
+  image: nginx:1.27-alpine
+  ports: ["8088:80"]
+  volumes: ["./nginx.conf:/etc/nginx/nginx.conf:ro"]
+  depends_on: [stable,canary]
